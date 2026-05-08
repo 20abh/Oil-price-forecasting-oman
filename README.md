@@ -19,6 +19,17 @@ This project analyzes and forecasts oil prices in Oman using statistical models 
 - SVR alone performs poorly
 - Hybrid SVR-ARIMA gives the best results with lowest RMSE
 
+  ## Visualizations
+
+### Oil Price Trend
+![Oil Trend](oil-trend.png)
+
+### Correlation Matrix
+![Correlation](correlation.png)
+
+### Forecast
+![Forecast](forecast.png)
+
 ## Tools Used
 - R
 - Python
