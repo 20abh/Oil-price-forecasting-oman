@@ -1,0 +1,986 @@
+---
+title: "Forecasting Oman Oil Prices Using Statical Models"
+author: "Abdullah"
+format: pdf
+editor: visual
+---
+
+# General Introduction
+
+Oil is one of the most important natural resources in the world and plays a key role in the economic development of many countries. In the Sultanate of Oman, oil is a major source of national income and contributes significantly to government revenue. Because of this, changes in oil prices can strongly affect the country’s economy, including budgeting, investment, and development planning.
+
+Oil prices are known to be highly volatile over time. They are influenced by many factors such as global demand and supply, political events, economic conditions, and decisions made by oil-producing countries. For example, events like economic crises or changes in production levels can cause oil prices to rise or fall sharply. This volatility makes it difficult for governments and businesses to predict future prices accurately.
+
+To address this challenge, different forecasting methods have been developed. Traditional statistical methods, especially time series analysis, are widely used to study data that changes over time. Models such as Autoregressive Integrated Moving Average (ARIMA) and Exponential Smoothing help to identify patterns like trends and seasonality in oil prices and use these patterns to make forecasts.
+
+In recent years, machine learning techniques have become popular for prediction problems. These methods, including regression models, Random Forest, and Support Vector Regression, can handle complex relationships in data and may improve forecasting accuracy. Unlike traditional models, machine learning approaches can capture non-linear patterns more effectively.
+
+This study aims to analyze oil price data in Oman using both time series and machine learning techniques. The purpose is to compare the performance of these methods and determine which approach provides more accurate forecasts. By doing so, the study will provide useful insights into oil price behavior and support better decision-making.
+
+In conclusion, accurate forecasting of oil prices is important for economic planning in Oman, and this study contributes by applying and comparing different analytical approaches.
+
+# Importance of Oil in Oman Economy
+
+Oil plays a central role in the economy of the Sultanate of Oman and is considered the backbone of the country’s economic development. Since the discovery of oil in Oman in the 1960s, the oil sector has been the main source of national income and government revenue. It contributes significantly to the country’s Gross Domestic Product (GDP), exports, and public finances.
+
+One of the most important roles of oil in Oman is its contribution to government revenue. A large portion of the government’s budget is financed through oil exports. This revenue is used to support public services such as education, healthcare, infrastructure, and social development programs. Therefore, any change in oil prices can directly affect government spending and economic stability.
+
+In addition, oil exports represent a major share of Oman’s total exports. The country relies heavily on exporting crude oil to international markets, making it an important participant in the global energy market. High oil prices generally lead to increased export earnings, while low prices can reduce national income and create economic challenges.
+
+The oil sector also supports economic growth by creating employment opportunities and encouraging investment. It has helped in the development of related industries such as transportation, construction, and energy services. Furthermore, oil revenues have been used to invest in diversification projects aimed at reducing dependence on oil in the long term.
+
+However, the strong reliance on oil also makes Oman’s economy vulnerable to fluctuations in global oil prices. Sudden drops in oil prices can lead to budget deficits and economic uncertainty. For this reason, accurate analysis and forecasting of oil prices are very important for effective economic planning and policy-making.
+
+In conclusion, oil remains a vital component of Oman’s economy, influencing its growth, stability, and development. Understanding oil price movements is therefore essential for ensuring sustainable economic progress.
+
+# Research questions
+
+1.  What are the main patterns in Oman oil prices over time?
+
+2.  Can time series models accurately forecast Oman oil prices?
+
+3.  Can machine learning techniques improve prediction accuracy?
+
+4.  Which method performs better for forecasting Oman oil prices?
+
+# Database
+
+```{r}
+# Install packages if needed
+library(readxl)
+library(ggplot2)
+library(psych)
+library(corrplot)
+library(lubridate)
+
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(lubridate)
+library(writexl)
+```
+
+# 1. Read the Excel file
+
+```{r}
+df <- read_excel("Data_abdullah.xlsx")
+head(df)
+
+```
+
+#Create a proper monthly date column
+
+```{r}
+df <- df %>%
+  mutate(
+    years = as.integer(years),
+    month = factor(month, levels = month.name, ordered = TRUE),
+    date = as.Date(paste(years, month, 1), format = "%Y %B %d")
+  ) %>%
+  arrange(date)
+
+```
+
+#2.Data Cleaning and Preparation #Check missing values
+
+```{r}
+cat("Missing values before imputation:\n")
+print(colSums(is.na(df)))
+
+cat("\nRows with missing values:\n")
+print(df %>% filter(if_any(everything(), is.na)))
+
+
+ggplot(df) +
+  geom_line(aes(x = 1:nrow(df), y = prices, color = "Oil Prices")) +
+  geom_line(aes(x = 1:nrow(df), y = exports, color = "Oil Exports")) +
+  geom_line(aes(x = 1:nrow(df), y = productions, color = "Production")) +
+  geom_line(aes(x = 1:nrow(df), y = USD_to_OMR, color = "Exchange Rate")) +
+  labs(title = "Trend of Oil Variables",
+       x = "Time",
+       y = "Value") +
+  scale_color_manual(values=c("blue","red","orange","black"))
+```
+
+#Impute missing values based on the monthly average from all years
+
+```{r}
+
+# First, create a 'month' column to group the data by month (if not already present)
+df$month <- factor(df$month, levels = month.name, ordered = TRUE)
+
+# Impute missing values based on the monthly average from all years
+df_imputed <- df %>%
+  group_by(month) %>%
+  mutate(across(c(prices, exports, productions, USD_to_OMR), 
+                ~ ifelse(is.na(.), mean(., na.rm = TRUE), .))) %>%
+  ungroup()
+
+# Check the result
+print(head(df_imputed))
+
+cat("\nMissing values after imputation:\n")
+print(colSums(is.na(df_imputed)))
+
+ggplot(df_imputed) +
+  geom_line(aes(x = 1:nrow(df), y = prices, color = "Oil Prices")) +
+  geom_line(aes(x = 1:nrow(df), y = exports, color = "Oil Exports")) +
+  geom_line(aes(x = 1:nrow(df), y = productions, color = "Production")) +
+  geom_line(aes(x = 1:nrow(df), y = USD_to_OMR, color = "Exchange Rate")) +
+  labs(title = "Trend of Oil Variables",
+       x = "Time",
+       y = "Value") +
+  scale_color_manual(values=c("blue","red","orange","black"))
+```
+
+# **EDA**
+
+```{r}
+
+data <- df_imputed
+str(data)
+summary(data)
+```
+
+#Histogram of Numerical Variables
+
+```{r}
+num_cols <- sapply(data, is.numeric)
+
+par(mfrow=c(2,2))
+for(col in names(data)[num_cols]){
+  hist(data[[col]], main=col, xlab=col)
+}
+
+# Visualize the distribution of oil prices
+ggplot(data, aes(x = prices)) + 
+  geom_histogram(binwidth = 5, fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Oil Prices", x = "Oil Prices", y = "Frequency")
+
+# Visualize the distribution of exports
+ggplot(data, aes(x = exports)) + 
+  geom_histogram(binwidth = 1000, fill = "lightgreen", color = "black") +
+  labs(title = "Distribution of Oil Exports", x = "Exports (USD)", y = "Frequency")
+
+# Visualize the distribution of production
+ggplot(data, aes(x = productions)) + 
+  geom_histogram(binwidth = 1000, fill = "lightcoral", color = "black") +
+  labs(title = "Distribution of Oil Production", x = "Production", y = "Frequency")
+
+# Visualize the trends of oil prices, exports, and production over time
+ggplot(data, aes(x = date)) +
+  
+  geom_line(aes(y = exports, color = "Oil Exports")) +
+  geom_line(aes(y = productions, color = "Oil Production")) +
+  labs(title = "Trends of Oil Exports, and Production Over Time", x = "Date", y = "Value") +
+  scale_color_manual(values = c("blue", "orange"))
+
+
+```
+
+```{r}
+# Visualize the distribution of oil prices with date on the x-axis
+ggplot(data, aes(x = date, y = prices)) +
+  geom_line(color = "black") +
+  labs(title = "Distribution of Oil Prices Over Time", x = "Date", y = "Oil Prices")
+
+# Visualize the distribution of exports with date on the x-axis
+ggplot(data, aes(x = date, y = exports)) +
+  geom_line(color = "red") +
+  labs(title = "Distribution of Oil Exports Over Time", x = "Date", y = "Exports (USD)")
+
+# Visualize the distribution of production with date on the x-axis
+ggplot(data, aes(x = date, y = productions)) +
+  geom_line(color = "lightcoral") +
+  labs(title = "Distribution of Oil Production Over Time", x = "Date", y = "Production")
+
+# Visualize the trends of oil prices, exports, and production over time
+ggplot(data, aes(x = date)) +
+  geom_line(aes(y = prices, color = "Oil Prices")) +
+  geom_line(aes(y = exports, color = "Oil Exports")) +
+  geom_line(aes(y = productions, color = "Oil Production")) +
+  labs(title = "Trends of Oil Prices, Exports, and Production Over Time", x = "Date", y = "Value") +
+  scale_color_manual(values = c("blue", "red", "orange"))
+```
+
+#box plot check outliers
+
+```{r}
+par(mfrow = c(1,2))
+
+# Boxplot for 'prices'
+boxplot(data$prices,
+        main = "Oil Prices",
+        ylab = "Prices (USD)",
+        col = "lightblue")
+
+# Boxplot for 'exports'
+boxplot(data$exports,
+        main = "Oil Exports",
+        ylab = "Exports (USD)",
+        col = "lightgreen")
+
+# Boxplot for 'production'
+boxplot(data$productions,
+        main = "Oil production",
+        ylab = "oil production",
+        col = "red")
+```
+
+#outliers
+
+```{r}
+# Boxplot to visualize outliers
+boxplot(data$prices, main = "Oil Prices (USD)", col = "lightblue")
+boxplot(data$exports, main = "Oil Exports (USD)", col = "lightgreen")
+
+# Identify outliers using IQR method
+Q1 <- quantile(data$prices, 0.25)
+Q3 <- quantile(data$prices, 0.75)
+IQR_prices <- Q3 - Q1
+lower_bound_prices <- Q1 - 1.5 * IQR_prices
+upper_bound_prices <- Q3 + 1.5 * IQR_prices
+
+# Remove outliers for 'prices'
+df_no_outliers <- data %>%
+  filter(prices >= lower_bound_prices & prices <= upper_bound_prices)
+
+# Visualize boxplot after removing outliers
+boxplot(df_no_outliers$prices, main = "Oil Prices (USD) After Removing Outliers", col = "red")
+
+
+```
+
+# correlations
+
+```{r}
+
+# Load the necessary library
+library(corrplot)
+
+# Calculate correlation matrix for the numerical variables
+correlation_matrix <- cor(df_imputed[, c("prices", "exports", "productions", "USD_to_OMR")], use = "complete.obs")
+
+# Print the correlation matrix
+print(correlation_matrix)
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "circle", type = "upper", 
+         col = colorRampPalette(c("blue", "white", "red"))(200), 
+         title = "Correlation Matrix of Oil Prices, Exports, Production, and USD/OMR")
+
+# Calculate pairwise correlations for specific pairs of interest
+cor_prices_exports <- cor(df_imputed$prices, df_imputed$exports, use = "complete.obs")
+cor_prices_productions <- cor(df_imputed$prices, df_imputed$productions, use = "complete.obs")
+cor_prices_usd_omr <- cor(df_imputed$prices, df_imputed$USD_to_OMR, use = "complete.obs")
+
+# Print pairwise correlations
+cat("Correlation between Prices and Exports: ", cor_prices_exports, "\n")
+cat("Correlation between Prices and Production: ", cor_prices_productions, "\n")
+cat("Correlation between Prices and USD to OMR: ", cor_prices_usd_omr, "\n")
+```
+
+```{r}
+# Load necessary libraries
+library(corrplot)
+library(ggplot2)
+library(RColorBrewer)
+
+# Calculate correlation matrix for the relevant columns
+correlation_matrix <- cor(df_imputed[, c("prices", "exports", "productions", "USD_to_OMR")], use = "complete.obs")
+
+# Create a color palette
+col <- colorRampPalette(c("red", "yellow", "green"))(200)
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, 
+         method = "color",       # Use color for visualization
+         type = "upper",         # Show only the upper triangle of the matrix
+         col = col,              # Set color palette
+         addCoef.col = "black",  # Add the correlation coefficients in black
+         tl.col = "black",       # Set color of the text labels
+         tl.srt = 45,            # Rotate the labels for better readability
+         title = "Correlation Matrix ",
+         cex.main = 1.5,         # Adjust title size
+         mar = c(0, 0, 3, 0))    # Adjust margins for title space
+```
+
+```{r}
+ggplot(data, aes(x = date, y = prices)) +
+  geom_line(color = "blue") +
+  labs(title = "Oil Prices Over Time",
+       x = "Date",
+       y = "Oil Prices")
+```
+
+# One Way ANOVA
+
+Performing One-Way ANOVA Across Different Years
+
+```{r}
+# One-Way ANOVA to compare oil prices across months
+anova_result <- aov(prices ~ month, data = data)
+
+# Summary of ANOVA result
+summary(anova_result)
+```
+
+Given the dataset you've shared, we will apply a One-Way ANOVA to test if there are significant differences in oil prices across different years. The year will be the factor variable, and oil prices will be the continuous variable.
+
+Assumptions of One-Way ANOVA: Independence: The observations (years) must be independent of each other. Normality: The oil prices in each group (year) should be approximately normally distributed. Homogeneity of Variances: The variance within each group (year) should be equal. This can be tested using Levene's Test.
+
+The One-Way ANOVA test was conducted to examine whether there are significant differences in oil prices across different levels of oil exports, production, and exchange rate.
+
+```{r}
+# Plot oil prices by year using a boxplot
+ggplot(df_imputed, aes(x = factor(years), y = prices)) +
+  geom_boxplot(fill = "lightblue", color = "black", outlier.colour = "red", outlier.shape = 16) +
+  labs(title = "Oil Prices by Year", 
+       x = "Year", 
+       y = "Oil Prices (USD per Barrel)") +
+  theme_minimal() +  # Apply a clean theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
+```
+
+The results show that the p-value is greater than 0.05 for most variables, indicating that there is **no statistically significant difference** in oil prices across the different groups. This means that variations in oil exports, production, and exchange rate do not significantly affect oil prices when analyzed using ANOVA.
+
+Therefore, we fail to reject the null hypothesis and conclude that there is no significant relationship between oil prices and the selected variables under this method.
+
+# Multiple Linear Regression Modle
+
+```{r}
+
+# Multiple Linear Regression Model
+mlr_model <- lm(prices ~ productions + exports, data = data)
+
+# Diagnostic plots for regression model
+par(mfrow = c(2, 2))
+
+plot(mlr_model)
+
+# Return plotting area to normal
+par(mfrow = c(1, 1))
+
+```
+
+
+# Log transformation for heteroscedasticity
+```{r}
+# Log transformation for heteroscedasticity
+data$log_prices <- log(data$prices)
+data$log_productions <- log(data$productions)
+data$log_exports <- log(data$exports)
+
+# New regression model after log transformation
+log_model <- lm(log_prices ~ log_productions + log_exports, data = data)
+
+# Summary of the new model
+summary(log_model)
+
+# Diagnostic plots after log transformation
+par(mfrow = c(2, 2))
+plot(log_model)
+par(mfrow = c(1, 1))
+```
+
+
+# Scatter Plots with Regression Line
+
+```{r}
+
+ggplot(data, aes(exports, prices)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  labs(title="Oil Prices vs Oil Export Values",
+       x="Oil Export Values",
+       y="Oil Prices")
+
+ggplot(data, aes(productions, prices)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  labs(title="Oil Prices vs Domestic Production",
+       x="Domestic Oil Production",
+       y="Oil Prices")
+
+ggplot(data, aes(USD_to_OMR, prices)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE) +
+  labs(title="Oil Prices vs USD/OMR Exchange Rate",
+       x="USD/OMR Exchange Rate",
+       y="Oil Prices")
+```
+
+Model significance
+
+The multiple regression model examines the relationship between oil prices and three explanatory variables: oil exports, domestic production, and the USD/OMR exchange rate.
+
+Domestic oil production
+
+Domestic oil production shows a positive relationship with oil prices, suggesting that higher production levels tend to be associated with higher oil prices.
+
+Oil export values
+
+Oil export values show a weak relationship with oil prices, indicating that export values may not strongly influence price movements in this dataset.
+
+Exchange rate
+
+The USD/OMR exchange rate shows very little variation, therefore its effect on oil prices is minimal.
+
+Overall model
+
+The regression model helps explain the variation in oil prices using the selected economic variables, although the strength of the relationships varies among predictors.
+
+```{r}
+library(car)
+# run regression model
+model <- lm(prices ~ exports + productions + USD_to_OMR, data=data)
+# VIF test
+vif(model)
+```
+
+The Variance Inflation Factor (VIF) was used to check for multicollinearity among the independent variables. The VIF values for exports (1.21), production (1.21), and exchange rate (1.004) are all close to 1 and well below the threshold value of 5.
+
+This indicates that there is **no multicollinearity problem** among the variables. Therefore, the independent variables are not highly correlated with each other, and the regression model is reliable.
+
+# Regression Results
+
+```{r}
+
+library(stargazer)
+
+stargazer(model,
+          type = "text",
+          title = "Regression Results: Determinants of Oil Prices",
+          dep.var.labels = "Oil Prices",
+          covariate.labels = c("Oil Export Values",
+                               "Domestic Oil Production",
+                               "USD/OMR Exchange Rate"),
+          digits = 3)
+```
+
+The regression analysis was conducted to examine the effect of oil export values, domestic oil production, and the USD/OMR exchange rate on oil prices in Oman.
+
+The overall model is statistically significant (**F = 17.637, p \< 0.01**), indicating that the independent variables jointly have a significant effect on oil prices. The model explains about **39.8% of the variation** in oil prices (**R² = 0.398**), which shows a moderate level of explanatory power.
+
+Among the independent variables, **domestic oil production** has a **positive and highly significant effect** on oil prices (**p \< 0.01**). This means that an increase in production is associated with an increase in oil prices.
+
+**Oil export values** have a **negative and statistically significant effect** (**p \< 0.05**), indicating that higher export levels are associated with lower oil prices.
+
+However, the **USD/OMR exchange rate** is **not statistically significant**, suggesting that it does not have a meaningful impact on oil prices in this model.
+
+In conclusion, oil prices in Oman are mainly influenced by production and export levels, while the exchange rate has no significant effect.
+
+# Durbin Watson test
+
+```{r}
+library(lmtest)
+# Durbin Watson test
+dwtest(model)
+```
+
+The Durbin-Watson test was used to check for autocorrelation in the residuals of the regression model. The test result shows a Durbin-Watson value of **0.511**, which is far below 2, and a **p-value less than 0.001**.
+
+This indicates that there is **significant positive autocorrelation** in the residuals. Therefore, the assumption of independent errors is violated.
+
+In conclusion, the regression model has autocorrelation, which may affect the reliability of the results.
+
+# hypothesis testing########################
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Filter 2016 data
+data_2016 <- data %>%
+  filter(years == 2016)
+
+# Regression model for 2016
+model_2016 <- lm(prices ~ productions + exports, data = data_2016)
+
+# Summary
+summary(model_2016)
+
+# ANOVA table for F-test
+anova(model_2016)
+
+# Plot 1: Effect of Production on Price
+ggplot(data_2016, aes(x = productions, y = prices)) +
+  geom_point(color = "blue", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Production on Price in 2016",
+       x = "Production",
+       y = "Oil Prices") +
+  theme_minimal()
+
+# Plot 2: Effect of Exports on Price
+ggplot(data_2016, aes(x = exports, y = prices)) +
+  geom_point(color = "green", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Exports on Price in 2016",
+       x = "Exports",
+       y = "Oil Prices") +
+  theme_minimal()
+```
+
+```{r}
+# Filter data for 2017–2018
+data_2017_2018 <- data %>%
+  filter(years %in% c(2017, 2018))
+
+# Multiple Linear Regression for 2017–2018
+model_2017_2018 <- lm(prices ~ productions + exports, data = data_2017_2018)
+
+# Model summary (t-test)
+summary(model_2017_2018)
+
+# ANOVA table (F-test)
+anova(model_2017_2018)
+
+# Plot 1: Effect of Production on Price
+ggplot(data_2017_2018, aes(x = productions, y = prices)) +
+  geom_point(color = "blue", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Production on Price for 2017–2018",
+       x = "Production",
+       y = "Oil Prices") +
+  theme_minimal()
+
+# Plot 2: Effect of Exports on Price
+ggplot(data_2017_2018, aes(x = exports, y = prices)) +
+  geom_point(color = "green", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Exports on Price for 2017–2018",
+       x = "Exports",
+       y = "Oil Prices") +
+  theme_minimal()
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Filter data for 2019–2021
+data_2019_2021 <- data %>%
+  filter(years %in% c(2019, 2020, 2021))
+
+# Multiple Linear Regression
+model_2019_2021 <- lm(prices ~ productions + exports, data = data_2019_2021)
+
+# Summary (t-test)
+summary(model_2019_2021)
+
+# ANOVA (F-test)
+anova(model_2019_2021)
+
+# Plot 1: Production vs Price
+ggplot(data_2019_2021, aes(x = productions, y = prices)) +
+  geom_point(color = "blue", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Production on Price for 2019–2021",
+       x = "Production",
+       y = "Oil Prices") +
+  theme_minimal()
+
+# Plot 2: Exports vs Price
+ggplot(data_2019_2021, aes(x = exports, y = prices)) +
+  geom_point(color = "green", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Exports on Price for 2019–2021",
+       x = "Exports",
+       y = "Oil Prices") +
+  theme_minimal()
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Filter data for 2022
+data_2022 <- data %>%
+  filter(years == 2022)
+
+# Multiple Linear Regression for 2022
+model_2022 <- lm(prices ~ productions + exports, data = data_2022)
+
+# Summary for t-test
+summary(model_2022)
+
+# ANOVA table for F-test
+anova(model_2022)
+
+# Plot 1: Effect of Production on Price for 2022
+ggplot(data_2022, aes(x = productions, y = prices)) +
+  geom_point(color = "blue", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Production on Price for 2022",
+       x = "Production",
+       y = "Oil Prices") +
+  theme_minimal()
+
+# Plot 2: Effect of Exports on Price for 2022
+ggplot(data_2022, aes(x = exports, y = prices)) +
+  geom_point(color = "green", size = 2) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(title = "Effect of Exports on Price for 2022",
+       x = "Exports",
+       y = "Oil Prices") +
+  theme_minimal()
+```
+
+```{r}
+# 3.4 Confidence Intervals in Multiple Regression
+
+# Multiple Linear Regression model
+model_full <- lm(prices ~ productions + exports, data = data)
+
+# Model summary
+summary(model_full)
+
+# 95% confidence intervals for regression coefficients
+confint(model_full, level = 0.95)
+
+# Put coefficients and confidence intervals in one table
+coef_table <- cbind(
+  Estimate = coef(model_full),
+  confint(model_full, level = 0.95)
+)
+
+coef_table
+```
+
+```{r}
+# Confidence intervals for 2016
+confint(model_2016, level = 0.95)
+
+# Confidence intervals for 2017–2018
+confint(model_2017_2018, level = 0.95)
+
+# Confidence intervals for 2019–2021
+confint(model_2019_2021, level = 0.95)
+
+# Confidence intervals for 2022
+confint(model_2022, level = 0.95)
+```
+
+
+
+```{r}
+# Fit regression for each period
+# 2016
+data_2016 <- data %>% filter(years == 2016)
+model_2016 <- lm(prices ~ exports + productions + USD_to_OMR, data = data_2016)
+summary(model_2016)
+
+# 2017-2018
+data_2017_2018 <- data %>% filter(years >= 2017 & years <= 2018)
+model_2017_2018 <- lm(prices ~ exports + productions + USD_to_OMR, data = data_2017_2018)
+summary(model_2017_2018)
+
+# 2019-2021
+data_2019_2021 <- data %>% filter(years >= 2019 & years <= 2021)
+model_2019_2021 <- lm(prices ~ exports + productions + USD_to_OMR, data = data_2019_2021)
+summary(model_2019_2021)
+
+# 2022
+data_2022 <- data %>% filter(years == 2022)
+model_2022 <- lm(prices ~ exports + productions + USD_to_OMR, data = data_2022)
+summary(model_2022)
+
+
+```
+
+## 
+
+# Confidence Intervals
+
+```{r}
+# Store confidence intervals
+ci_2016 <- confint(model_2016)
+ci_2017_2018 <- confint(model_2017_2018)
+ci_2019_2021 <- confint(model_2019_2021)
+ci_2022 <- confint(model_2022)
+
+# Print results
+ci_2016
+ci_2017_2018
+ci_2019_2021
+ci_2022
+```
+
+prices \~ exports + productions + USD_to_OMR, data
+
+
+### Time Series
+```{r}
+# Convert to time series (monthly data)
+ts_prices <- ts(data$prices, start = c(2016, 1), frequency = 12)
+
+# Plot
+plot(ts_prices,
+     type = "l",
+     col = "black",
+     lwd = 2,
+     main = "Oil Prices Over Time",
+     xlab = "Time",
+     ylab = "Prices")
+
+# Add grid (optional like your figure style)
+grid()
+```
+```{r}
+# Plot SAC (ACF)
+acf(ts_prices, 
+    main = "SAC (ACF) of Oil Prices")
+```
+
+```{r}
+# First differencing
+diff_prices <- diff(ts_prices,lag=1)
+
+# Plot differenced series
+plot(diff_prices,
+     type = "l",
+     col = "blue",
+     main = "transformed Oil Prices",
+     xlab = "Time",
+     ylab = "Differenced Prices")
+
+# SAC after differencing
+acf(diff_prices, 
+    main = "SAC after Differencing")
+```
+# Fit ARIMA(0,1,1)
+
+```{r}
+library(forecast)
+
+# Convert to time series
+ts_prices <- ts(data$prices, start = c(2016,1), frequency = 12)
+
+# Fit ARIMA(0,1,1)
+model_arima <- Arima(ts_prices, order = c(0,1,1))
+
+# Summary
+summary(model_arima)
+auto_model <- auto.arima(ts_prices)
+
+summary(auto_model)
+```
+#Forecast of Oil Prices
+```{r}
+# Fit ARIMA(0,1,1)
+fitprice <- Arima(ts_prices, order = c(0, 1, 1))
+
+# Forecast next 12 months
+price_forecast <- forecast(fitprice, h = 12)
+
+# Print forecast values
+print(price_forecast)
+
+# Plot forecast
+plot(price_forecast,
+     main = "Forecast of Oil Prices",
+     xlab = "Time",
+     ylab = "Oil Prices")
+
+autoplot(price_forecast) +
+  labs(title = "Forecast of Oil Prices",
+       x = "Time",
+       y = "Oil Prices") +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+par(mfcol=c(1,2))
+plot(data$prices, type="l")
+plot(data$productions,type="l")
+acf(data$prices)
+acf(data$productions)
+
+
+dprice<-diff(data$prices,lag=1)
+
+par(mfcol=c(1,2))
+acf(dprice)
+pacf(dprice)
+```
+
+### Time Series Plot
+
+```{r}
+fitprice<-arima(ts(data$prices),order=c(1,1,0))
+fitprice
+resprice<-fitprice$residuals
+fitsta<-arima(ts(dprice),order=c(1,0,0))
+fitsta
+par(mfrow=c(1,2))
+acf(resprice)
+pacf(resprice)
+
+```
+
+not sig \### adequacy model
+
+```{r}
+Box.test(fitprice$residuals, lag=1,type = c("Box-Pierce", "Ljung-Box"), fitdf = 0)
+
+```
+
+```{r}
+library(forecast)
+prediction<-forecast(fitprice,h=15)
+plot(prediction)
+prediction
+```
+
+```{r}
+############### Estimation of the parameters SVR
+Price<-data$prices
+y<-ts(Price)
+T<-length(y)
+M<-floor(T/4)
+y1<-y[1:(T-M)]
+fit.price<-arima( y1 , order=c(1,1,0))
+summary(fit.price)
+fitted<-forecast(fit.price)$fitted
+#prediction_price<-forecast(fit.price, h=6)
+#prediction_price
+#win.graph(width=5, height=5,pointsize=8)
+#par(mfrow=c(1,1))
+#plot(prediction_price)
+#attributes(forecast(fit.price)
+```
+
+```{r}
+
+######################### SVR method
+const<-rep(1, times=84)
+ytrain=y[2:(T-M)]
+ytest=y[(T-M+1):T]
+xtrain=cbind(const[2:(T-M)],y[1:(T-M-1)])
+xtest=cbind(const[(T-M+1):T],y[(T-M):(T-1)])
+
+```
+
+```{r}
+library(e1071)
+tobj<-tune.svm(x=xtrain,y=ytrain,cost=c(2,5,25,50),epsilon=c(0.005,0.01,.025,.1,0.25))
+tobj$best.parameters
+Cvalue=tobj$best.parameters$cost
+epsvalue=tobj$best.parameters$epsilon
+
+
+```
+
+```{r}
+# Train final SVR model
+model_svr <- svm(xtrain, ytrain, cost = 25, epsilon = 0.25)
+
+# Prediction
+pred_svr <- predict(model_svr, xtest)
+
+# Accuracy
+library(Metrics)
+rmse(ytest, pred_svr)
+mae(ytest, pred_svr)
+```
+```{r}
+# Prepare SVR data without constant column
+xtrain <- matrix(y[1:(T-M-1)], ncol = 1)
+xtest  <- matrix(y[(T-M):(T-1)], ncol = 1)
+
+ytrain <- y[2:(T-M)]
+ytest  <- y[(T-M+1):T]
+
+# Tune SVR model
+library(e1071)
+
+tobj <- tune.svm(
+  x = xtrain,
+  y = ytrain,
+  cost = c(2, 5, 25, 50),
+  epsilon = c(0.005, 0.01, 0.025, 0.1, 0.25)
+)
+
+tobj$best.parameters
+
+# Train final SVR model
+model_svr <- svm(xtrain, ytrain, cost = 25, epsilon = 0.25)
+
+# Prediction
+pred_svr <- predict(model_svr, xtest)
+
+# Accuracy
+library(Metrics)
+
+rmse(ytest, pred_svr)
+mae(ytest, pred_svr)
+```
+
+
+
+
+
+```{r}
+library(kernlab)
+#Fit ARIMA-SVR with Gaussian,, linear and polynomial kernel respectively 
+#validation
+regm<-ksvm(xtrain,ytrain,epsilon=epsvalue,C=Cvalue,cross=5)
+regmlin<-ksvm(xtrain,ytrain,epsilon=epsvalue,kernel="vanilladot",C=Cvalue,cross=5)
+regmpoly<-ksvm(xtrain,ytrain,epsilon=epsvalue,kernel="polydot",C=Cvalue,cross=5)
+
+
+```
+
+```{r}
+predarima<-forecast(fit.price,h=M)
+hatarima<-ts(predarima$mean)
+attributes(hatarima)
+```
+
+```{r}
+library(Metrics)
+bestgarchmse1=c(rmse(hatarima,ytest),
+                rmse(predict(regm,xtest),ytest),
+                rmse(predict(regmlin,xtest),ytest),
+                rmse(predict(regmpoly,xtest),ytest))
+bestgarchmse1
+
+```
+```{r}
+svrarima<-predict(regmlin,xtest)
+```
+
+```{r}
+#par(mfrow = c(1, 1))
+#win.graph(width=6, height=5,pointsize=8)
+plot(y[(T-M+1):T],type="l",ylim=range(0,max(y)+10),col="blue",main="original",xlab="Date(Daily)",ylab="",lty=1)
+lines(hatarima,type="l",col="red",main="arimaforecast",xlab="Date(Daily)",ylab="",lty=1)
+lines(svrarima,type="l",col="green",main="svm forecast",xlab="Date(Daily)",ylab="",lty=1)
+legend(x=2,y=max(y)+5,c("original","arima","SVM_arima"),
+       cex=.9,col=c("blue","red","green"),pch="-",lty=5,lwd=2,box.col = "white")
+
+
+```
